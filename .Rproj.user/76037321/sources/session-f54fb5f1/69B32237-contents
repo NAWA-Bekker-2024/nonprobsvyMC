@@ -1,0 +1,178 @@
+## examples of likelihood methods
+library(nnet)
+library(nonprobsvy)
+library(nonprobsvyMC)
+library(misclassGLM)
+library(simex)
+
+set.seed(2024)
+N <- 10000
+X <- rnorm(N)
+U <- sample(x = c("A", "B", "C"),
+            size=N,
+            replace=T,
+            prob = c(0.6, 0.2, 0.2))
+U <- factor(U)
+prob <- plogis(-1 + 2*X + 2*(U == "B") - 1*(U == "C"))
+sel <- plogis(-1 - 2*X - 1*(U == "B") + (U == "C"))
+Y <- rbinom(N,1,prob)
+pop_data <- data.frame(y=Y,x=X,u=U, s=sel)
+
+u_mat <- matrix(c(0.75, 0.15, 0.10,
+                  0.10, 0.70, 0.25,
+                  0.10, 0.05, 0.85), byrow=T, ncol = 3)
+
+
+colnames(u_mat) <- rownames(u_mat) <- levels(U)
+U_star <- misclassify(data.frame(u=pop_data$u), list(u = u_mat))
+pop_data$u_star <- U_star$u
+
+## using misclassGLM
+R <- 100
+res <- matrix(data=0, nrow = R, ncol = 8)
+
+for (r in 1:R) {
+  set.seed(r)
+  prob_sample <- pop_data[sample(1:N, 1000), ]
+  nonprob_sample <- subset(pop_data, rbinom(N,1,pop_data$s) == 1) ## 0.17
+  nonprob_sample_mis <- nonprob_sample
+  nonprob_sample_mis$u <- nonprob_sample_mis$u_star
+  prob_sample$d <- N/1000
+  valid_sample <- nonprob_sample[sample(1:nrow(nonprob_sample), 1000), ]
+  multinom_fit <- multinom(u ~ u_star + x, data=valid_sample, trace=F)
+  P <- predict(multinom_fit, nonprob_sample, type = "prob")
+  #P <- cbind(1-preds, preds)
+  colnames(P) <- c("u_starA", "u_starB", "u_starC")
+
+  ## if everything was fine
+  res_mi <- nonprob(outcome = y ~ x + u,
+                    data = nonprob_sample,
+                    svydesign = svydesign(ids=~1, data=prob_sample, weights = ~d),
+                    family_outcome = "binomial")
+
+  res_ipw <- nonprob(selection =  ~ x + u,
+                     target = ~ y,
+                     data = nonprob_sample,
+                     svydesign = svydesign(ids=~1, data=prob_sample, weights = ~d))
+
+  ## naive approach assuming u is measured perfectly
+  res_mi_mis <- nonprob(outcome = y ~ x + u,
+                        data = nonprob_sample_mis,
+                        svydesign = svydesign(ids=~1, data=prob_sample, weights = ~d),
+                        family_outcome = "binomial")
+
+  res_ipw_mis <- nonprob(selection =  ~ x + u,
+                         target = ~y,
+                         data = nonprob_sample_mis,
+                         svydesign = svydesign(ids=~1, data=prob_sample, weights = ~d))
+
+  ## method to correct coefficients for measurement error
+  est <- misclassGLM(Y = as.numeric(nonprob_sample$y),
+                     X = as.matrix(nonprob_sample[, "x", drop = FALSE]),
+                     setM = contr.treatment(res_mi_mis$outcome$y$xlevels$u),
+                     P = P,
+                     family = binomial(),
+                     par = res_mi_mis$outcome$y$coefficients)
+
+  ## IPW
+  both_samples <- rbind(nonprob_sample_mis[, c("y", "x", "u")], prob_sample[, c("y", "x", "u")])
+  both_samples$R <- rep(c(1, 0), c(nrow(nonprob_sample_mis), nrow(prob_sample)))
+  both_P <- rbind(P, model.matrix(~-1+u,prob_sample))
+
+  est_ipw <- misclassGLM(Y = both_samples$R,
+                         X = as.matrix(both_samples[, "x", drop = FALSE]),
+                         setM = contr.treatment(res_mi_mis$outcome$y$xlevels$u),
+                         P = both_P,
+                         family = binomial())
+
+  est_ipw_probs <- plogis(model.matrix(~x + u, nonprob_sample_mis) %*% est_ipw$coefficients)
+  ## impute based on validation sample
+  nonprob_sample_mis$u <- predict(multinom_fit, nonprob_sample)
+
+  if (any(table(nonprob_sample_mis$u) == 0))  {
+    print("error")
+    next
+  }
+
+  res_mi_mis_imp <- nonprob(outcome = y ~ x + u,
+                            data = nonprob_sample_mis,
+                            svydesign = svydesign(ids=~1, data=prob_sample, weights = ~d),
+                            family_outcome = "binomial")
+
+  res_ipw_mis_imp <- nonprob(selection = ~ x + u,
+                             target=~y,
+                            data = nonprob_sample_mis,
+                            svydesign = svydesign(ids=~1, data=prob_sample, weights = ~d))
+
+  ## simex approach
+  u_mat <- xtabs(~ u+u_star,valid_sample)
+  u_mat <- prop.table(u_mat, margin = 2)
+  m0 <- glm(y ~ x + u_star, data = nonprob_sample, family = binomial)
+  m0_simex <- mcsimex(model=m0, SIMEXvariable = "u_star", mc.matrix = list(u_star=u_mat),
+                      #lambda = c(0.01, 0.025, 0.5, 1),
+                      asymptotic = F, jackknife.estimation = F, B = 50, fitting.method = "quadratic")
+  m0_simex_lin <- simex::refit(m0_simex, fitting.method = "linear", asymptotic = F, jackknife.estimation = F)
+  m0_simex_log <- simex::refit(m0_simex, fitting.method = "loglin", asymptotic = F, jackknife.estimation = F)
+
+  res[r, 1] <- mean(nonprob_sample$y)
+  res[r, 2] <- res_mi$output$mean
+  res[r, 3] <- res_mi_mis$output$mean
+  res[r, 4] <- res_mi_mis_imp$output$mean ## imputation
+  res[r, 5] <- mean(plogis(model.matrix(~x+u, prob_sample) %*% est$coefficients))
+  res[r, 6] <- mean(plogis(model.matrix(~x+u, prob_sample) %*% m0_simex$coefficients))
+  res[r, 7] <- mean(plogis(model.matrix(~x+u, prob_sample) %*% m0_simex_lin$coefficients))
+  res[r, 8] <- mean(plogis(model.matrix(~x+u, prob_sample) %*% m0_simex_log$coefficients))
+  res[r, 9] <- res_ipw$output$mean
+  res[r, 10] <- res_ipw_mis$output$mean
+  res[r, 11] <- res_mi_mis_imp$output$mean
+  res[r, 12] <- weighted.mean(x=nonprob_sample_mis$y, w=1/est_ipw_probs)
+
+}
+
+boxplot(res[rowSums(res) > 0,])
+abline(h=mean(pop_data$y), col = "red")
+
+
+
+
+m0 <- glm(y~x+u, data=nonprob_sample, family=binomial, x = T, y=T)
+m1 <- glm(y~x+u_star, data=nonprob_sample, family=binomial, x = T, y=T)
+m2 <- glm(y~x+u_B + u_C, data=nonprob_sample, family=binomial, x = T, y=T)
+
+Xs <- model.matrix(~x,nonprob_sample)
+Us <- model.matrix(~u_star,nonprob_sample)
+ys <- m1$y
+start_coef <- coef(m1)
+
+
+binomial_loglik <- function(par, y, x, u, probs) {
+
+  beta_x <- par[1:(ncol(x))] ## parameters for x (without measurement error)
+  beta_u <- par[(ncol(x)+1):(ncol(x)+ncol(u)-1)] ## parameters for u (with measurement error)
+
+ lik <- dbinom(x = y, size = 1, prob=as.numeric(plogis(x %*% beta_x)))*probs[,1] +
+    dbinom(x = y, size = 1, prob=as.numeric(plogis(cbind(x,u[,2]) %*% c(beta_x, beta_u[1]))))*probs[,2]
+
+  return(-sum(log(lik)))
+}
+
+
+binomial_loglik(par = rep(0, NROW(start_coef)),
+                y=ys,
+                x=Xs,
+                u=Us,
+                probs=P)
+
+
+start <- coef(m1)#start_coef
+start <- rep(0, NROW(start_coef))
+
+optim(par = start,
+      fn = binomial_loglik, method = "BFGS",
+      y=ys,
+      x=Xs,
+      u=Us,
+      probs=P)$par -> res
+
+est$coefficients
+

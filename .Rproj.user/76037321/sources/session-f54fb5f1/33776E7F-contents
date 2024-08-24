@@ -1,0 +1,45 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+Let's define:
+
+$\mathbf{y}$ as the $n \times 1$ vector of binary outcomes $\mathbf{X}$
+as the $n \times p$ matrix of covariates (including a column of 1s for
+the intercept) $\boldsymbol{\beta}$ as the $p \times 1$ vector of
+coefficients $\mathbf{P}$ as the $n \times k$ matrix of probabilities
+$\hat{p}_{u|u_i^*}(x_i)$, where $k$ is the number of levels of $U$
+$\mathbf{U}$ as the $k \times k$ diagonal matrix with diagonal elements
+$(0, 1, ..., k-1)$
+
+Then we can express the log-likelihood as: $$
+\log L(\boldsymbol{\beta}) = \sum_{i=1}^n \ln \left[\sum_{u=0}^{k-1} f\left(y_i, \mathbf{x}i^T\boldsymbol{\beta} + \beta_u u\right) \cdot p{iu}\right]
+$$
+
+Where $f(y_i, \mu_i) = \frac{\exp(y_i\mu_i)}{1 + \exp(\mu_i)}$ is the
+probability mass function of the Bernoulli distribution with logit link,
+$\mathbf{x}i^T$ is the $i$-th row of $\mathbf{X}$, and $p{iu}$ is the
+element in the $i$-th row and $u$-th column of $\mathbf{P}$.
+
+We can further simplify this using matrix operations: $$
+\log L(\boldsymbol{\beta}) = \mathbf{1}^T \ln \left[\mathbf{P} \odot f(\mathbf{y}, \mathbf{X}\boldsymbol{\beta}\mathbf{1}^T + \beta_u\mathbf{1}\mathbf{U}^T)\right]\mathbf{1}
+$$
+
+Where:
+
+$\mathbf{1}$ is a vector of ones of appropriate dimension $\odot$
+denotes element-wise multiplication $f(\mathbf{y}, \boldsymbol{\mu})$ is
+the element-wise application of $f$ to vectors $\mathbf{y}$ and
+$\boldsymbol{\mu}$ $\ln$ is applied element-wise
+
+This notation compactly expresses the log-likelihood for logistic
+regression with a misclassified categorical covariate, allowing for any
+number of levels of $U$. The term
+$\mathbf{X}\boldsymbol{\beta}\mathbf{1}^T$ creates an $n \times k$
+matrix where each column is $\mathbf{X}\boldsymbol{\beta}$, and
+$\beta_u\mathbf{1}\mathbf{U}^T$ adds the appropriate $\beta_u u$ term
+for each level of $U$

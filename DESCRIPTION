@@ -1,0 +1,18 @@
+Package: nonprobsvyMC
+Type: Package
+Title: nonprobsvy with misclassified variables
+Version: 0.1.0
+Authors@R:
+    c(person(given = "Maciej",
+             family = "Beręsewicz",
+             role = c("aut", "cre"),
+             email = "maciej.beresewicz@ue.poznan.pl",
+             comment = c(ORCID = "0000-0002-8281-4301")))
+Description: An extension to the nonprobsvy package to account for misclassification in auxiliary variables
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Suggests: tinytest
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Language: en-US
