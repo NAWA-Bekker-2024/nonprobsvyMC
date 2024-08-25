@@ -135,26 +135,23 @@ abline(h=mean(pop_data$y), col = "red")
 betas <- est$coefficients
 est$optim$value ## 1158.882
 
-### loglik
-y <- res_mi_mis$outcome$y$y
-x <- model.matrix(~x,nonprob_sample)
-setm <-  contr.treatment(res_mi_mis$outcome$y$xlevels$u)
+## testing method_lik
 
-eta <- as.numeric(x %*% betas[1:2])
-eta_mat <- rep(1, NROW(eta)) %*% (betas[3:4] %*% t(setm)) + eta
-p <- plogis(eta_mat)
-tmp <- rowSums(p*P*y + (1-y)*(1-p)*P)
-ret <- sum(log(tmp))
-
-## gradient
-eta <- as.numeric(x %*% betas[1:2])
-eta_mat <- rep(1, NROW(eta)) %*% (betas[3:4] %*% t(setm)) + eta
-p <- plogis(eta_mat)
-lik <- rowSums(p*P*y + (1-y)*(1-p)*P)
-tmp <- ifelse(y == 1, 1, -1) * p * (1-p) * P
-ret <- c(colSums((rowSums(tmp) / lik)*x),
-         colSums((tmp / lik) %*% setm))
+method_lik(y = nonprob_sample_mis$y,
+           x = model.matrix(~x, nonprob_sample_mis),
+           family = binomial,
+           mat_z = contr.treatment(res_mi_mis$outcome$y$xlevels$u),
+           mat_p = P,
+           weights = rep(1, NROW(P)),
+           start = res_mi_mis$outcome$y$coefficients,
+           control = list())$par
 
 
+est <- misclassGLM(Y = as.numeric(nonprob_sample$y),
+                   X = as.matrix(nonprob_sample[, "x", drop = FALSE]),
+                   setM = contr.treatment(res_mi_mis$outcome$y$xlevels$u),
+                   P = P,
+                   family = binomial(),
+                   par = res_mi_mis$outcome$y$coefficients)
 
-
+est$optim$par

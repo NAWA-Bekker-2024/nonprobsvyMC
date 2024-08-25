@@ -1,0 +1,27 @@
+{
+    "id": "0644BE11",
+    "path": "~/mac/nauka/nawa/nonprobsvyMC/R/correct_missclass.R",
+    "project_path": "R/correct_missclass.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1724576746066.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "tempName": "Untitled2",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "47,19",
+        "scrollLine": "45"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1724501548,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1724501548,
+    "read_only": false,
+    "read_only_alternatives": []
+}
